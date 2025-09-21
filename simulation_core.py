@@ -1,5 +1,9 @@
 import random
 import math
+import matplotlib
+matplotlib.use('Agg')  # Non-GUI backend for server
+import matplotlib.pyplot as plt
+import os
 
 # --------------------------------
 # PARAMETERS
@@ -14,9 +18,11 @@ MIN_SPEED = 20 * 1000 / 3600  # 20 km/h in m/s
 # Fix seed for reproducibility
 random.seed(42)
 
+# Directory for saving plots
+PLOT_DIR = "static/plots"
+os.makedirs(PLOT_DIR, exist_ok=True)
 
 # TRAIN CLASS
-
 class Train:
     def __init__(self, train_id, position, speed):
         self.id = train_id
@@ -24,19 +30,13 @@ class Train:
         self.speed = speed
         self.original_speed = speed
 
-
-
 # SAFE GAP
-
 def calculate_safety_gap(speed_mps):
     braking = (speed_mps ** 2) / (2 * DECELERATION)
     reaction = speed_mps * REACTION_TIME
     return braking + reaction + SAFE_DISTANCE
 
-
-
 # CREATE TRAINS
-
 def create_random_trains(num_trains):
     trains = []
     for i in range(num_trains):
@@ -45,14 +45,25 @@ def create_random_trains(num_trains):
         trains.append(Train(i + 1, position, speed))
     return trains
 
-
+# HELPER: Save plot
+def save_train_plot(history, filename_prefix):
+    plt.figure(figsize=(9, 5))
+    for train_id, positions in history.items():
+        plt.plot(range(len(positions)), positions, label=f"Train {train_id}")
+    plt.xlabel("Time step")
+    plt.ylabel("Position (m)")
+    plt.title("Train Simulation")
+    plt.legend()
+    filepath = os.path.join(PLOT_DIR, f"{filename_prefix}.png")
+    plt.savefig(filepath)
+    plt.close()
+    return filepath
 
 # SIMULATE WITHOUT AI
-
 def simulate_without_ai(trains):
     history = {train.id: [] for train in trains}
     collisions = []
-    for time_step in range(MAX_STEPS):
+    for t in range(MAX_STEPS):
         for train in trains:
             history[train.id].append(train.position)
         trains.sort(key=lambda x: x.position)
@@ -62,19 +73,17 @@ def simulate_without_ai(trains):
             gap = lead.position - follower.position
             safe_gap = calculate_safety_gap(follower.speed)
             if gap < safe_gap:
-                collisions.append((time_step, follower.position))
+                collisions.append((t, follower.position))
         for train in trains:
             train.position += train.speed * TIME_STEP
-    return history, collisions
-
-
+    plot_path = save_train_plot(history, "no_ai")
+    return history, collisions, plot_path
 
 # SIMULATE AI PREDICTION
-
 def simulate_ai_prediction(trains):
     history = {train.id: [] for train in trains}
     predicted_collisions = []
-    for time_step in range(MAX_STEPS):
+    for t in range(MAX_STEPS):
         for train in trains:
             history[train.id].append(train.position)
         trains.sort(key=lambda x: x.position)
@@ -84,71 +93,44 @@ def simulate_ai_prediction(trains):
             gap = lead.position - follower.position
             safe_gap = calculate_safety_gap(follower.speed)
             if gap < safe_gap:
-                predicted_collisions.append((time_step, follower.position))
+                predicted_collisions.append((t, follower.position))
         for train in trains:
             train.position += train.speed * TIME_STEP
-    return history, predicted_collisions
-
-
+    plot_path = save_train_plot(history, "ai_prediction")
+    return history, predicted_collisions, plot_path
 
 # SIMULATE AI PREVENTION
-
 def simulate_ai_prevention(trains):
     history = {train.id: [] for train in trains}
-    ai_actions = []  # (time, train_id, old_speed, new_speed, position)
+    ai_actions = []
 
-    for time_step in range(MAX_STEPS):
+    for t in range(MAX_STEPS):
         for train in trains:
             history[train.id].append(train.position)
-
         trains.sort(key=lambda x: x.position)
-
         for i in range(len(trains) - 1):
             follower = trains[i]
             lead = trains[i + 1]
             gap = lead.position - follower.position
             safe_gap = calculate_safety_gap(follower.speed)
 
-            if gap < safe_gap:  # unsafe gap → trigger AI
+            if gap < safe_gap:
                 gap_diff = gap - SAFE_DISTANCE
-                if gap_diff > 0:
-                    recommended_speed = math.sqrt(2 * DECELERATION * gap_diff)
-                else:
-                    recommended_speed = MIN_SPEED
-
+                recommended_speed = math.sqrt(2 * DECELERATION * gap_diff) if gap_diff > 0 else MIN_SPEED
                 recommended_speed = max(MIN_SPEED, recommended_speed)
-
-                # Record follower (only if speed reduces)
                 if recommended_speed < follower.speed:
-                    ai_actions.append((
-                        time_step,
-                        follower.id,
-                        follower.speed,   # old speed
-                        recommended_speed,  # reduced speed
-                        follower.position
-                    ))
-                    follower.speed = recommended_speed  # update
+                    ai_actions.append((t, follower.id, follower.speed, recommended_speed, follower.position))
+                    follower.speed = recommended_speed
+                ai_actions.append((t, lead.id, lead.speed, lead.speed, lead.position))
 
-                # Always record lead as "involved" (speed unchanged)
-                ai_actions.append((
-                    time_step,
-                    lead.id,
-                    lead.speed,
-                    lead.speed,   # no reduction
-                    lead.position
-                ))
-
-        # Move trains after decisions
         for train in trains:
             train.position += train.speed * TIME_STEP
 
-    #  Summarize (first, middle, last) for labels
+    # Summarize actions
     summarized_actions = []
     actions_by_train = {}
-
     for action in ai_actions:
         t_id = action[1]
-        # only include trains where speed was reduced
         if action[2] != action[3]:
             if t_id not in actions_by_train:
                 actions_by_train[t_id] = []
@@ -159,8 +141,9 @@ def simulate_ai_prevention(trains):
         if total == 1:
             summarized_actions.append(actions[0])
         elif total > 1:
-            summarized_actions.append(actions[0])         # first
-            summarized_actions.append(actions[total // 2]) # middle
-            summarized_actions.append(actions[-1])        # last
+            summarized_actions.append(actions[0])
+            summarized_actions.append(actions[total // 2])
+            summarized_actions.append(actions[-1])
 
-    return history, ai_actions, summarized_actions
+    plot_path = save_train_plot(history, "ai_prevention")
+    return history, ai_actions, summarized_actions, plot_path
