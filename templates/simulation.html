@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulation - AI Train Safety</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; margin: 0; background: #f9fafb; }
+        nav { background:#2563eb; padding:15px; color:white; display:flex; justify-content:space-between; }
+        nav ul { list-style:none; display:flex; gap:20px; margin:0; padding:0; }
+        nav ul li a { color:white; text-decoration:none; font-weight:600; }
+        .container { max-width:1000px; margin:40px auto; padding:20px; background:white; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+        h1, h2 { color:#111827; }
+        form { margin-bottom:20px; }
+        label { font-weight:600; }
+        button { background:#2563eb; color:white; border:none; padding:10px 15px; border-radius:5px; font-weight:600; cursor:pointer; }
+        button:hover { background:#1e4fd1; }
+    </style>
+</head>
+<body>
+    <nav>
+    <ul>
+        <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">Home</a></li>
+        <li><a href="/simulation" class="{% if request.path == '/simulation' %}active{% endif %}">Simulation</a></li>
+        <li><a href="/info" class="{% if request.path == '/info' %}active{% endif %}">Information</a></li>
+        <li><a href="/about" class="{% if request.path == '/about' %}active{% endif %}">About</a></li>
+    </ul>
+</nav>
+
+
+    <div class="container">
+        <h1>AI Train Safety Simulation</h1>
+
+        <!-- ✅ Correct form action -->
+        <form method="POST" action="/simulation">
+            <label for="num_trains">Enter number of trains:</label>
+            <input type="number" id="num_trains" name="num_trains" min="2" max="10" required>
+            <button type="submit">Start Simulation</button>
+        </form>
+
+        {% if initial_trains %}
+        <h2>Initial Conditions:</h2>
+        <ul>
+            {% for train in initial_trains %}
+            <li>Train-{{ train.id }}: Position = {{ "%.2f"|format(train.position) }} m, Speed = {{ "%.2f"|format(train.speed * 3.6) }} km/h</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if history_no_ai %}
+        <h2>Results Without AI (Actual Collisions)</h2>
+        <div id="plot-no-ai" style="height:400px;"></div>
+        {% endif %}
+
+        {% if history_prediction %}
+        <h2>Results With AI - Prediction (Before Action)</h2>
+        <div id="plot-ai-prediction" style="height:400px;"></div>
+        {% endif %}
+
+        {% if history_prevention %}
+        <h2>Results With AI - After Action</h2>
+        <div id="plot-ai-prevention" style="height:400px;"></div>
+        {% endif %}
+    </div>
+
+    <script>
+    function animateGraph(containerId, history, collisions=[], aiActions=[], title="") {
+        let trainIds = Object.keys(history);
+        let maxSteps = history[trainIds[0]].length;
+
+        // Draw train paths
+        let traces = [];
+        trainIds.forEach(trainId => {
+            traces.push({
+                x: [],
+                y: [],
+                mode: "lines",
+                line: { width: 2 },
+                name: `Train ${trainId}`
+            });
+        });
+
+        Plotly.newPlot(containerId, traces, {
+            title: title,
+            xaxis: { title: "Time Step", range: [0, maxSteps] },
+            yaxis: { title: "Position (m)" },
+            margin: { t: 60 },
+            showlegend: true,
+            images: []
+        });
+
+        let step = 0;
+        let finalAnnotations = [];
+
+        // 🔹 Pre-calculate annotations (first, middle, last per train)
+        let groupedActions = {};
+        aiActions.forEach(a => {
+            if (!groupedActions[a[1]]) groupedActions[a[1]] = [];
+            groupedActions[a[1]].push(a);
+        });
+
+        for (let trainId in groupedActions) {
+            let actions = groupedActions[trainId];
+            let total = actions.length;
+            if (total > 0) {
+                let picks = [actions[0]];
+                if (total > 2) picks.push(actions[Math.floor(total/2)]);
+                if (total > 1) picks.push(actions[total-1]);
+
+                picks.forEach(a => {
+                    let reduction = ((a[2] - a[3]) * 3.6).toFixed(1);
+                    finalAnnotations.push({
+                        x: a[0],
+                        y: a[4],
+                        xref: "x",
+                        yref: "y",
+                        text: `Train-${a[1]} ↓${reduction} km/h`,
+                        showarrow: true,
+                        arrowhead: 3,
+                        ax: 0,
+                        ay: -40 - (a[1] * 10),
+                        font: { size: 10, color: "black" },
+                        bgcolor: "white",
+                        bordercolor: "gray",
+                        borderwidth: 1
+                    });
+                });
+            }
+        }
+
+        // Animate over time
+        let interval = setInterval(() => {
+            let updatesX = [], updatesY = [];
+            trainIds.forEach((trainId, idx) => {
+                updatesX.push([step]);
+                updatesY.push([history[trainId][step]]);
+            });
+
+            Plotly.extendTraces(containerId,
+                { x: updatesX, y: updatesY },
+                trainIds.map((_, i) => i)
+            );
+
+            let newImages = [];
+
+            // Train icons
+            trainIds.forEach((trainId, idx) => {
+                let collided = collisions.some(c => c[0] === step && c[1] === history[trainId][step]);
+                if (!collided) {
+                    newImages.push({
+                        source: "/static/train.png",
+                        x: step,
+                        y: history[trainId][step],
+                        xref: "x",
+                        yref: "y",
+                        sizex: 3,
+                        sizey: 600,
+                        xanchor: "center",
+                        yanchor: "middle",
+                        layer: "above"
+                    });
+                }
+            });
+
+            // Collision dots
+            collisions.forEach(c => {
+                if (c[0] === step) {
+                    newImages.push({
+                        source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><circle cx='10' cy='10' r='10' fill='red'/></svg>",
+                        x: c[0],
+                        y: c[1],
+                        xref: "x",
+                        yref: "y",
+                        sizex: 1,
+                        sizey: 200,
+                        xanchor: "center",
+                        yanchor: "middle",
+                        layer: "above"
+                    });
+                }
+            });
+
+            // AI action dots
+            aiActions.forEach(a => {
+                if (a[0] === step) {
+                    newImages.push({
+                        source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><circle cx='10' cy='10' r='10' fill='orange'/></svg>",
+                        x: a[0],
+                        y: a[4],
+                        xref: "x",
+                        yref: "y",
+                        sizex: 1,
+                        sizey: 300,
+                        xanchor: "center",
+                        yanchor: "middle",
+                        layer: "above"
+                    });
+                }
+            });
+
+            Plotly.relayout(containerId, { images: newImages, annotations: finalAnnotations });
+
+            step++;
+            if (step >= maxSteps) clearInterval(interval);
+        }, 1000);
+    }
+
+    {% if history_no_ai %}
+    animateGraph("plot-no-ai", {{ history_no_ai|tojson }}, {{ collisions_no_ai|tojson }}, [], "Without AI - Live");
+    {% endif %}
+
+    {% if history_prediction %}
+    animateGraph("plot-ai-prediction", {{ history_prediction|tojson }}, {{ predicted_collisions|tojson }}, [], "AI Prediction - Live");
+    {% endif %}
+
+    {% if history_prevention %}
+    animateGraph("plot-ai-prevention", {{ history_prevention|tojson }}, [], {{ ai_actions|tojson }}, "AI Prevention - Live");
+    {% endif %}
+    </script>
+</body>
+</html>

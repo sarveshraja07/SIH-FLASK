@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Train Simulation</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f8f9fa; }
+
+        header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 22px;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 20px;
+            margin: 0;
+            padding: 0;
+        }
+
+        nav ul li {
+            margin: 0;
+        }
+
+        nav ul li a {
+            color: #fff;
+            text-decoration: none;
+            font-weight: bold;
+            padding-bottom: 4px;
+            transition: color 0.3s ease, border-bottom 0.3s ease;
+        }
+
+        nav ul li a.active {
+            border-bottom: 3px solid #f0db4f;
+            color: #f0db4f;
+        }
+
+        nav ul li a:hover {
+            color: #f0db4f;
+        }
+
+        main {
+            padding: 20px 40px;
+        }
+
+        h1, h2 { color: #2c3e50; }
+        form { margin-bottom: 20px; padding: 10px; background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        label { font-weight: bold; margin-right: 10px; }
+        input, button { padding: 6px 10px; margin-top: 5px; }
+        button { background: #2c3e50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1a242f; }
+        .graph-container { background: #fff; padding: 15px; margin-top: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🚆 AI Train Simulation</h1>
+    <nav>
+      <ul>
+        <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">Home</a></li>
+        <li><a href="/simulation" class="{% if request.path == '/simulation' %}active{% endif %}">Simulation</a></li>
+        <li><a href="/info" class="{% if request.path == '/info' %}active{% endif %}">Information</a></li>
+        <li><a href="/about" class="{% if request.path == '/about' %}active{% endif %}">About</a></li>
+      </ul>
+    </nav>
+</header>
+
+<main>
+    <h1>AI Train Safety Simulation</h1>
+    <form method="POST" action="/simulation">
+        <label for="num_trains">Enter number of trains:</label>
+        <input type="number" id="num_trains" name="num_trains" min="2" max="10" required>
+        <button type="submit">Start Simulation</button>
+    </form>
+
+    {% if initial_trains %}
+    <h2>Initial Conditions:</h2>
+    <ul>
+        {% for train in initial_trains %}
+        <li>Train-{{ train.id }}: Position = {{ "%.2f"|format(train.position) }} m, 
+            Speed = {{ "%.2f"|format(train.speed * 3.6) }} km/h</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if history_no_ai %}
+    <div class="graph-container">
+        <h2>Results Without AI (Actual Collisions)</h2>
+        <div id="plot-no-ai" style="height:400px;"></div>
+    </div>
+    {% endif %}
+
+    {% if history_prediction %}
+    <div class="graph-container">
+        <h2>Results With AI - Prediction (Before Action)</h2>
+        <div id="plot-ai-prediction" style="height:400px;"></div>
+    </div>
+    {% endif %}
+
+    {% if history_prevention %}
+    <div class="graph-container">
+        <h2>Results With AI - After Action</h2>
+        <div id="plot-ai-prevention" style="height:400px;"></div>
+    </div>
+    {% endif %}
+</main>
+
+    <script>
+    // Animate with train.png icons + path lines
+    function animateGraph(containerId, history, collisions=[], aiActions=[], summarizedActions=[], title="") {
+        let trainIds = Object.keys(history);
+        let maxSteps = history[trainIds[0]].length;
+
+        // Line traces for each train
+        let traces = [];
+        trainIds.forEach(trainId => {
+            traces.push({
+                x: [],
+                y: [],
+                mode: "lines",
+                line: { width: 2 },
+                name: `Train ${trainId}`
+            });
+        });
+
+        Plotly.newPlot(containerId, traces, {
+            title: title,
+            xaxis: { title: "Time Step", range: [0, maxSteps] },
+            yaxis: { title: "Position (m)" },
+            margin: { t: 60 },
+            showlegend: true,
+            images: [],
+            annotations: []
+        });
+
+        let step = 0;
+        let allAnnotations = []; // keep labels across steps
+
+        let interval = setInterval(() => {
+            // Extend train paths
+            let updatesX = [], updatesY = [];
+            trainIds.forEach((trainId, idx) => {
+                updatesX.push([step]);
+                updatesY.push([history[trainId][step]]);
+            });
+
+            Plotly.extendTraces(
+                containerId,
+                { x: updatesX, y: updatesY },
+                trainIds.map((_, i) => i)
+            );
+
+            // Overlay icons
+            let newImages = [];
+
+            // Train icons
+            trainIds.forEach((trainId, idx) => {
+                let collided = collisions.some(c => c[0] === step && c[1] === history[trainId][step]);
+                if (!collided) {
+                    newImages.push({
+                        source: "/static/train.png",
+                        x: step,
+                        y: history[trainId][step],
+                        xref: "x",
+                        yref: "y",
+                        sizex: 3,      
+                        sizey: 600,    
+                        xanchor: "center",
+                        yanchor: "middle",
+                        layer: "above"
+                    });
+                }
+            });
+
+            // Collisions (red dots)
+            collisions.forEach(c => {
+                if (c[0] === step) {
+                    newImages.push({
+                        source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><circle cx='10' cy='10' r='10' fill='red'/></svg>",
+                        x: c[0],
+                        y: c[1],
+                        xref: "x",
+                        yref: "y",
+                        sizex: 1,
+                        sizey: 200,
+                        xanchor: "center",
+                        yanchor: "middle",
+                        layer: "above"
+                    });
+                }
+            });
+
+            // AI actions (orange dots for every reduction)
+            aiActions.forEach(a => {
+                if (a[0] === step) {
+                    newImages.push({
+                        source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><circle cx='11' cy='11' r='10' fill='orange'/></svg>",
+                        x: a[0],
+                        y: a[4],
+                        xref: "x",
+                        yref: "y",
+                        sizex: 1.2,
+                        sizey: 350,
+                        xanchor: "center",
+                        yanchor: "middle",
+                        layer: "above"
+                    });
+                }
+            });
+
+            // Annotations only for summarized actions (first, middle, last)
+            summarizedActions.forEach(a => {
+                if (a[0] === step) {
+                    let reduction = ((a[2] - a[3]) * 3.6).toFixed(1);
+                    allAnnotations.push({
+                        x: a[0],
+                        y: a[4],
+                        xref: "x",
+                        yref: "y",
+                        text: `Train-${a[1]} ↓${reduction} km/h`,
+                        showarrow: true,
+                        arrowhead: 3,
+                        ax: 0,
+                        ay: -40 - (a[1] * 10), // stagger labels by train id
+                        font: { size: 11, color: "black" },
+                        bgcolor: "white",
+                        bordercolor: "gray",
+                        borderwidth: 1
+                    });
+                }
+            });
+
+            // Update images + annotations
+            Plotly.relayout(containerId, { images: newImages, annotations: allAnnotations });
+
+            step++;
+            if (step >= maxSteps) clearInterval(interval);
+        }, 1000); // 1 sec per step
+    }
+
+    // Call animation for each graph
+    {% if history_no_ai %}
+    animateGraph("plot-no-ai", {{ history_no_ai|tojson }}, {{ collisions_no_ai|tojson }}, [], [], "Without AI - Live");
+    {% endif %}
+
+    {% if history_prediction %}
+    animateGraph("plot-ai-prediction", {{ history_prediction|tojson }}, {{ predicted_collisions|tojson }}, [], [], "AI Prediction - Live");
+    {% endif %}
+
+    {% if history_prevention %}
+    animateGraph("plot-ai-prevention", 
+                 {{ history_prevention|tojson }}, 
+                 [], 
+                 {{ ai_actions|tojson }},          // all actions (orange dots)
+                 {{ summarized_actions|tojson }}, // only for labels
+                 "AI Prevention - Live");
+    {% endif %}
+    </script>
+</body>
+</html>

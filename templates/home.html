@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Train Simulation</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      overflow-x: hidden;
+    }
+
+    /* Navbar */
+    header {
+      background: rgba(0, 0, 0, 0.85);
+      padding: 15px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      backdrop-filter: blur(6px);
+    }
+
+    header h1 {
+      font-size: 26px;
+      margin: 0;
+      color: #f0db4f;
+    }
+
+    nav ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      gap: 20px;
+    }
+
+    nav a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: bold;
+      position: relative;
+      padding-bottom: 4px;
+    }
+
+    nav a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 0%;
+      height: 2px;
+      background: #f0db4f;
+      transition: width 0.3s;
+    }
+
+    nav a:hover::after,
+    nav a.active::after {
+      width: 100%;
+    }
+
+    /* Hero Section with video */
+    .hero {
+      position: relative;
+      height: 500px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .hero video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.4); /* dark overlay */
+      z-index: 1;
+    }
+
+    .hero h2, .hero p, .hero form {
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero h2 {
+      font-size: 52px;
+      margin-bottom: 20px;
+      color: #f0db4f;
+    }
+
+    .hero p {
+      font-size: 20px;
+      max-width: 700px;
+      margin: 0 auto 40px;
+      line-height: 1.6;
+    }
+
+    .hero button {
+      background: #f0db4f;
+      color: #333;
+      font-size: 20px;
+      font-weight: bold;
+      padding: 14px 40px;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: transform 0.3s ease, background 0.3s ease;
+    }
+
+    .hero button:hover {
+      transform: scale(1.1);
+      background: #ffcc00;
+    }
+
+    .hero form {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    /* Features */
+    .features {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 30px;
+      padding: 60px 20px;
+      background: #fff;
+      color: #333;
+    }
+
+    .feature-box {
+      background: #f9f9f9;
+      padding: 30px;
+      border-radius: 12px;
+      width: 300px;
+      box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+      text-align: center;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .feature-box:hover {
+      transform: translateY(-10px);
+      box-shadow: 0 12px 20px rgba(0,0,0,0.25);
+    }
+
+    .feature-box h3 {
+      color: #2a5298;
+      margin-bottom: 15px;
+    }
+
+    /* Team section */
+    .team {
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      color: #fff;
+      padding: 60px 20px;
+      text-align: center;
+    }
+
+    .team h2 {
+      font-size: 32px;
+      margin-bottom: 30px;
+      color: #f0db4f;
+    }
+
+    .team-members {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 30px;
+    }
+
+    .member {
+      background: rgba(255,255,255,0.1);
+      padding: 20px;
+      border-radius: 12px;
+      width: 200px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .member:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+    }
+
+    .member h3 {
+      margin: 10px 0 0;
+      color: #fff;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.85);
+      font-size: 14px;
+      color: #ddd;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <header>
+    <h1>🚆 AI Train Simulation</h1>
+    <nav>
+      <ul>
+        <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">Home</a></li>
+        <li><a href="/simulation" class="{% if request.path == '/simulation' %}active{% endif %}">Simulation</a></li>
+        <li><a href="/info" class="{% if request.path == '/info' %}active{% endif %}">Information</a></li>
+        <li><a href="/about" class="{% if request.path == '/about' %}active{% endif %}">About</a></li>
+        <li><a href="/login" class="{% if request.path == '/login' %}active{% endif %}">Login</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- Hero Section with background train video -->
+  <section class="hero">
+    <video autoplay muted loop playsinline>
+      <source src="{{ url_for('static', filename='train_background.mp4') }}" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+
+    <h2>Smart Rail Safety, Powered by AI</h2>
+    <p>
+      Experience how Artificial Intelligence predicts and prevents train collisions. 
+      Visualize real-time simulations with speed adjustments, safe distances, and preventive actions.
+    </p>
+
+    <!-- Force user to login first -->
+    <form action="/login">
+      <button type="submit">Start Simulation</button>
+    </form>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features">
+    <div class="feature-box">
+      <h3>🚄 Real-Time Simulation</h3>
+      <p>Watch trains move dynamically with live position updates and AI interventions.</p>
+    </div>
+    <div class="feature-box">
+      <h3>🤖 AI Collision Prevention</h3>
+      <p>Our AI ensures safe distances by adjusting train speeds to minimize risks.</p>
+    </div>
+    <div class="feature-box">
+      <h3>📊 Detailed Insights</h3>
+      <p>Get detailed information about each train’s ID, speed, and AI actions taken.</p>
+    </div>
+  </section>
+
+  <!-- Team Section -->
+  <section class="team">
+    <h2>Meet Our Team</h2>
+    <div class="team-members">
+      <div class="member"><h3>YASHWANTH.D</h3></div>
+      <div class="member"><h3>SARVESHRAJA.K</h3></div>
+      <div class="member"><h3>SILVANDENISE.D</h3></div>
+      <div class="member"><h3>UKESH KARAN.V</h3></div>
+      <div class="member"><h3>YASHINI.T</h3></div>
+      <div class="member"><h3>YAZHINI.J</h3></div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    &copy; 2025 AI Train Simulation Project | Built for Innovation 🚆
+  </footer>
+
+</body>
+</html>

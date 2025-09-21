@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>About | AI Train Safety Simulation</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f8f9fa;
+      color: #333;
+    }
+    header {
+      background: #2c3e50;
+      padding: 15px 20px;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+    nav a {
+      color: white;
+      text-decoration: none;
+      margin-left: 20px;
+      font-weight: bold;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+    main {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #2c3e50;
+    }
+    .team {
+      margin-top: 30px;
+      padding: 15px;
+      background: #ecf0f1;
+      border-left: 5px solid #2c3e50;
+    }
+    .team h3 {
+      margin-top: 0;
+    }
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    ul li {
+      padding: 5px 0;
+      font-size: 16px;
+    }
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      padding: 15px;
+      background: #2c3e50;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AI Train Safety Simulation</h1>
+    <nav>
+    <ul>
+        <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">Home</a></li>
+        <li><a href="/simulation" class="{% if request.path == '/simulation' %}active{% endif %}">Simulation</a></li>
+        <li><a href="/info" class="{% if request.path == '/info' %}active{% endif %}">Information</a></li>
+        <li><a href="/about" class="{% if request.path == '/about' %}active{% endif %}">About</a></li>
+    </ul>
+</nav>
+
+  </header>
+
+  <main>
+    <h2>About the Project</h2>
+    <p>
+      The <strong>AI Train Safety Simulation</strong> project is designed to maximize train throughput
+      while ensuring passenger safety by preventing collisions on railway tracks.
+      Using Artificial Intelligence, the system continuously monitors train positions,
+      predicts potential collisions, and takes corrective actions by dynamically
+      adjusting train speeds in real-time.
+    </p>
+    <p>
+      The simulation demonstrates three different scenarios:
+      <ul>
+        <li><b>Without AI:</b> Trains move without intervention, and collisions occur.</li>
+        <li><b>AI Prediction:</b> The system predicts potential collisions before they happen.</li>
+        <li><b>AI Prevention:</b> The system actively prevents collisions by reducing train speeds,
+        ensuring a safe distance between trains.</li>
+      </ul>
+    </p>
+    <p>
+      This project highlights how Artificial Intelligence can transform railway systems
+      to be more efficient and safe, supporting both high throughput and reliable passenger travel.
+    </p>
+
+    <div class="team">
+      <h3>Team Members</h3>
+      <ul>
+        <li>YASHWANTH.D</li>
+        <li>SARVESHRAJA.K</li>
+        <li>SILVANDENISE.D</li>
+        <li>UKESH KARAN.V</li>
+        <li>YASHINI</li>
+        <li>YAZHINI</li>
+      </ul>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2025 AI Train Safety Simulation | All Rights Reserved
+  </footer>
+</body>
+</html>

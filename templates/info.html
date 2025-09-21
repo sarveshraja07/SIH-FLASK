@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Information | AI Train Safety Simulation</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f8f9fa;
+      color: #333;
+    }
+    header {
+      background: #2c3e50;
+      padding: 15px 20px;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+    nav ul {
+      list-style: none;
+      display: flex;
+      gap: 20px;
+      margin: 0;
+      padding: 0;
+    }
+    nav a {
+      color: white;
+      text-decoration: none;
+      font-weight: bold;
+      padding-bottom: 4px;
+    }
+    nav a.active {
+      border-bottom: 3px solid #f0db4f;
+      color: #f0db4f;
+    }
+    nav a:hover {
+      color: #f0db4f;
+    }
+    main {
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #2c3e50;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    table th, table td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: center;
+    }
+    table th {
+      background: #2c3e50;
+      color: white;
+    }
+    table tr:nth-child(even) {
+      background: #f2f2f2;
+    }
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      padding: 15px;
+      background: #2c3e50;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AI Train Safety Simulation</h1>
+    <nav>
+      <ul>
+        <li><a href="/" >Home</a></li>
+        <li><a href="/simulation">Simulation</a></li>
+        <li><a href="/info" class="active">Information</a></li>
+        <li><a href="/about">About</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <h2>Train Speed Reduction Records</h2>
+    <p>Below is the record of all trains where AI reduced speed during the simulation:</p>
+
+    {% if ai_actions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Time Step</th>
+          <th>Train ID</th>
+          <th>Old Speed (km/h)</th>
+          <th>New Speed (km/h)</th>
+          <th>Position (m)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for action in ai_actions %}
+        <tr>
+          <td>{{ action[0] }}</td>
+          <td>Train-{{ action[1] }}</td>
+          <td>{{ "%.1f"|format(action[2] * 3.6) }}</td>
+          <td>{{ "%.1f"|format(action[3] * 3.6) }}</td>
+          <td>{{ "%.2f"|format(action[4]) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color: red;">No AI actions recorded yet. Please run a simulation first.</p>
+    {% endif %}
+  </main>
+
+  <footer>
+    &copy; 2025 AI Train Safety Simulation | All Rights Reserved
+  </footer>
+</body>
+</html>
