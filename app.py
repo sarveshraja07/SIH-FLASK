@@ -9,8 +9,7 @@ from simulation_core import (
 import os
 
 app = Flask(__name__)
-# Use environment variable for secret key if available, otherwise fallback
-app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")  
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
 # 🔹 Global variable to store last simulation's AI actions
 global_ai_actions = []
@@ -32,7 +31,6 @@ def about():
 
 @app.route("/info")
 def info():
-    # Pass the last stored AI actions to info.html
     return render_template("info.html", ai_actions=global_ai_actions)
 
 
@@ -40,47 +38,50 @@ def info():
 def simulation():
     global global_ai_actions
 
-    # Restrict access if not logged in
     if "user" not in session:
         return redirect(url_for("login"))
 
+    # Initialize variables
     initial_trains = None
-    history_no_ai = None
-    collisions_no_ai = None
-    history_prediction = None
-    predicted_collisions = None
-    history_prevention = None
-    ai_actions = None
-    summarized_actions = None
+    history_no_ai = collisions_no_ai = plot_no_ai = None
+    history_prediction = predicted_collisions = plot_prediction = None
+    history_prevention = ai_actions = summarized_actions = plot_prevention = None
 
     if request.method == "POST":
-        num_trains = int(request.form.get("num_trains"))
+        try:
+            num_trains = int(request.form.get("num_trains", 5))
+        except ValueError:
+            num_trains = 5
+
+        # Create initial trains
         initial_trains = create_random_trains(num_trains)
 
-        # Simulate scenarios
-        history_no_ai, collisions_no_ai = simulate_without_ai(
-            [Train(t.id, t.position, t.speed) for t in initial_trains]
-        )
-        history_prediction, predicted_collisions = simulate_ai_prediction(
-            [Train(t.id, t.position, t.speed) for t in initial_trains]
-        )
-        history_prevention, ai_actions, summarized_actions = simulate_ai_prevention(
-            [Train(t.id, t.position, t.speed) for t in initial_trains]
-        )
+        # Copy trains for each simulation
+        trains_no_ai = [Train(t.id, t.position, t.speed) for t in initial_trains]
+        trains_pred = [Train(t.id, t.position, t.speed) for t in initial_trains]
+        trains_prev = [Train(t.id, t.position, t.speed) for t in initial_trains]
 
-        # 🔹 Store the latest AI actions globally for info.html
-        global_ai_actions = ai_actions
+        # Run simulations and unpack correctly
+        history_no_ai, collisions_no_ai, plot_no_ai = simulate_without_ai(trains_no_ai)
+        history_prediction, predicted_collisions, plot_prediction = simulate_ai_prediction(trains_pred)
+        history_prevention, ai_actions, summarized_actions, plot_prevention = simulate_ai_prevention(trains_prev)
+
+        # Store latest AI actions globally
+        global_ai_actions = summarized_actions
 
     return render_template(
-        "index.html",
+        "simulation.html",
         initial_trains=initial_trains,
         history_no_ai=history_no_ai,
         collisions_no_ai=collisions_no_ai,
+        plot_no_ai=plot_no_ai,
         history_prediction=history_prediction,
         predicted_collisions=predicted_collisions,
+        plot_prediction=plot_prediction,
         history_prevention=history_prevention,
         ai_actions=ai_actions,
         summarized_actions=summarized_actions,
+        plot_prevention=plot_prevention,
         logged_in=True
     )
 
@@ -92,7 +93,7 @@ def login():
         password = request.form.get("password")
 
         if email == VALID_EMAIL and password == VALID_PASSWORD:
-            session["user"] = email  # store user in session
+            session["user"] = email
             return redirect(url_for("simulation"))
         else:
             return render_template("login.html", error="Invalid email or password")
@@ -102,11 +103,10 @@ def login():
 
 @app.route("/logout")
 def logout():
-    session.pop("user", None)  # remove user from session
+    session.pop("user", None)
     return redirect(url_for("home"))
 
 
 if __name__ == "__main__":
-    # Use Render's port or default 5000
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)

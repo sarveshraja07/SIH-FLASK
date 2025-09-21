@@ -4,11 +4,11 @@ import matplotlib
 matplotlib.use('Agg')  # Non-GUI backend for server
 import matplotlib.pyplot as plt
 import os
-from flask import Flask, render_template, send_file
+from flask import Flask, render_template
 
-# --------------------------------
+# ------------------------
 # PARAMETERS
-# --------------------------------
+# ------------------------
 SAFE_DISTANCE = 500        # meters
 REACTION_TIME = 5          # seconds
 DECELERATION = 1.0         # m/s²
@@ -157,20 +157,21 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     trains = create_random_trains(5)
-    # Run all simulations
+    
+    # Run simulations
     no_ai_hist, no_ai_coll, no_ai_plot = simulate_without_ai([Train(t.id, t.position, t.speed) for t in trains])
     ai_pred_hist, ai_pred_coll, ai_pred_plot = simulate_ai_prediction([Train(t.id, t.position, t.speed) for t in trains])
     ai_prev_hist, ai_prev_actions, ai_prev_summarized, ai_prev_plot = simulate_ai_prevention([Train(t.id, t.position, t.speed) for t in trains])
 
-    return f"""
-    <h1>Train Simulation Results</h1>
-    <h2>Without AI</h2>
-    <img src="/{no_ai_plot}" width="800"><br>
-    <h2>AI Prediction</h2>
-    <img src="/{ai_pred_plot}" width="800"><br>
-    <h2>AI Prevention</h2>
-    <img src="/{ai_prev_plot}" width="800"><br>
-    """
+    return render_template(
+        "simulation.html",
+        no_ai_plot=no_ai_plot,
+        no_ai_coll=no_ai_coll,
+        ai_pred_plot=ai_pred_plot,
+        ai_pred_coll=ai_pred_coll,
+        ai_prev_plot=ai_prev_plot,
+        ai_prev_actions=ai_prev_summarized
+    )
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=10000)
