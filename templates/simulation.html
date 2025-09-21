@@ -64,21 +64,29 @@
     </div>
 
     <script>
+    // Helper: create SVG data URL for a colored dot
+    function svgDot(color = "orange", size = 20) {
+        const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'><circle cx='${size/2}' cy='${size/2}' r='${size/2}' fill='${color}'/></svg>`;
+        return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    }
+
     function animateGraph(containerId, history, collisions=[], aiActions=[], title="") {
+        // history: { "1": [pos_t0, pos_t1, ...], "2": [...] }
+        // collisions: [ [time, position], ... ]  (time numeric)
+        // aiActions: [ [time, trainId, old_speed, new_speed, position_at_time], ... ]
+
         let trainIds = Object.keys(history);
+        if (trainIds.length === 0) return;
         let maxSteps = history[trainIds[0]].length;
 
-        // Draw train paths
-        let traces = [];
-        trainIds.forEach(trainId => {
-            traces.push({
-                x: [],
-                y: [],
-                mode: "lines",
-                line: { width: 2 },
-                name: `Train ${trainId}`
-            });
-        });
+        // initial empty traces for each train
+        let traces = trainIds.map(trainId => ({
+            x: [],
+            y: [],
+            mode: "lines",
+            line: { width: 2 },
+            name: `Train ${trainId}`
+        }));
 
         Plotly.newPlot(containerId, traces, {
             title: title,
@@ -86,125 +94,165 @@
             yaxis: { title: "Position (m)" },
             margin: { t: 60 },
             showlegend: true,
-            images: []
+            images: [],
+            annotations: []
         });
 
-        let step = 0;
-        let finalAnnotations = [];
-
-        // 🔹 Pre-calculate annotations (first, middle, last per train)
+        // Group AI actions per train and keep chronological order
         let groupedActions = {};
         aiActions.forEach(a => {
-            if (!groupedActions[a[1]]) groupedActions[a[1]] = [];
-            groupedActions[a[1]].push(a);
+            let t = a[1].toString();
+            if (!groupedActions[t]) groupedActions[t] = [];
+            groupedActions[t].push(a);
         });
+        for (let t in groupedActions) {
+            groupedActions[t].sort((a,b) => a[0] - b[0]);
+        }
 
+        // Pre-calc annotations: pick first, middle, last action per train
+        let finalAnnotations = [];
         for (let trainId in groupedActions) {
             let actions = groupedActions[trainId];
             let total = actions.length;
-            if (total > 0) {
-                let picks = [actions[0]];
-                if (total > 2) picks.push(actions[Math.floor(total/2)]);
-                if (total > 1) picks.push(actions[total-1]);
+            if (total === 0) continue;
+            // pick indices
+            let picks = [];
+            picks.push(actions[0]);
+            if (total > 2) picks.push(actions[Math.floor(total/2)]);
+            if (total > 1) picks.push(actions[total-1]);
 
-                picks.forEach(a => {
-                    let reduction = ((a[2] - a[3]) * 3.6).toFixed(1);
-                    finalAnnotations.push({
-                        x: a[0],
-                        y: a[4],
+            // create annotation for each pick
+            picks.forEach(a => {
+                // a = [time, trainId, old_speed (m/s), new_speed (m/s), pos_at_time]
+                let reduction = ((a[2] - a[3]) * 3.6).toFixed(1); // km/h
+                finalAnnotations.push({
+                    x: a[0],
+                    y: a[4],
+                    xref: 'x',
+                    yref: 'y',
+                    text: `Train-${a[1]} ↓${reduction} km/h`,
+                    showarrow: true,
+                    arrowhead: 3,
+                    ax: 0,
+                    ay: -40 - (Number(a[1]) * 6),
+                    font: { size: 11, color: "black" },
+                    bgcolor: "rgba(255,255,255,0.9)",
+                    bordercolor: "gray",
+                    borderwidth: 1
+                });
+            });
+        }
+
+        // Prepare AI action start events (so we can "activate" a moving dot when action time reached)
+        // Each active dot will then track the train position from action time to end.
+        let actionStarts = aiActions.map((a, idx) => ({
+            id: idx,
+            start: Number(a[0]),
+            trainId: a[1].toString(),
+            info: a  // store original action tuple for reference
+        }));
+
+        // Keep active dots (those whose start <= current step)
+        let activeDots = []; // entries: {id, trainId, info}
+
+        // Also precompute collision map by time for fast lookup
+        let collisionMap = {};
+        (collisions || []).forEach(c => {
+            const time = Number(c[0]);
+            if (!collisionMap[time]) collisionMap[time] = [];
+            collisionMap[time].push(c[1]);
+        });
+
+        // animation loop
+        let step = 0;
+        const intervalMs = 700; // speed of animation (adjust if needed)
+
+        let interval = setInterval(() => {
+            // update traces: extend with this step's datapoints
+            let updatesX = trainIds.map(_ => [step]);
+            let updatesY = trainIds.map(trainId => [ history[trainId][step] ]);
+
+            Plotly.extendTraces(containerId, { x: updatesX, y: updatesY }, trainIds.map((_,i) => i));
+
+            // activate any new dots whose start == step
+            actionStarts.forEach(ev => {
+                if (ev.start === step) {
+                    activeDots.push({ id: ev.id, trainId: ev.trainId, info: ev.info });
+                }
+            });
+
+            // build images: train icons + collision icons + active AI dots
+            let images = [];
+
+            // train icons (small, track along train)
+            trainIds.forEach(trainId => {
+                let pos = history[trainId][step];
+                images.push({
+                    source: "/static/train.png",
+                    x: step,
+                    y: pos,
+                    xref: "x",
+                    yref: "y",
+                    sizex: 1.6,   // horizontal size in x-units (time steps)
+                    sizey: 120,   // vertical size in y-units (position scale)
+                    xanchor: "center",
+                    yanchor: "middle",
+                    layer: "above"
+                });
+            });
+
+            // collision icons at their times/positions (they appear only on that step)
+            if (collisionMap[step]) {
+                collisionMap[step].forEach(pos => {
+                    images.push({
+                        source: "data:image/svg+xml;utf8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><circle cx='12' cy='12' r='12' fill='red'/></svg>"),
+                        x: step,
+                        y: pos,
                         xref: "x",
                         yref: "y",
-                        text: `Train-${a[1]} ↓${reduction} km/h`,
-                        showarrow: true,
-                        arrowhead: 3,
-                        ax: 0,
-                        ay: -40 - (a[1] * 10),
-                        font: { size: 10, color: "black" },
-                        bgcolor: "white",
-                        bordercolor: "gray",
-                        borderwidth: 1
+                        sizex: 1.2,
+                        sizey: 150,
+                        xanchor: "center",
+                        yanchor: "middle",
+                        layer: "above"
                     });
                 });
             }
-        }
 
-        // Animate over time
-        let interval = setInterval(() => {
-            let updatesX = [], updatesY = [];
-            trainIds.forEach((trainId, idx) => {
-                updatesX.push([step]);
-                updatesY.push([history[trainId][step]]);
+            // active AI dots: these travel with their train after activation
+            activeDots.forEach(dot => {
+                const trainId = dot.trainId;
+                // avoid out-of-range (safety)
+                if (!history[trainId] || step >= history[trainId].length) return;
+                const pos = history[trainId][step];
+                images.push({
+                    source: svgDot("orange", 18),
+                    x: step,
+                    y: pos,
+                    xref: "x",
+                    yref: "y",
+                    sizex: 0.8,
+                    sizey: 120,
+                    xanchor: "center",
+                    yanchor: "middle",
+                    layer: "above"
+                });
             });
 
-            Plotly.extendTraces(containerId,
-                { x: updatesX, y: updatesY },
-                trainIds.map((_, i) => i)
-            );
+            // also, if you'd like, show small marker when action occurs exactly at this step (redundant with activeDots startup)
+            // (We already activate dots when start===step, so they will appear here)
 
-            let newImages = [];
-
-            // Train icons
-            trainIds.forEach((trainId, idx) => {
-                let collided = collisions.some(c => c[0] === step && c[1] === history[trainId][step]);
-                if (!collided) {
-                    newImages.push({
-                        source: "/static/train.png",
-                        x: step,
-                        y: history[trainId][step],
-                        xref: "x",
-                        yref: "y",
-                        sizex: 3,
-                        sizey: 600,
-                        xanchor: "center",
-                        yanchor: "middle",
-                        layer: "above"
-                    });
-                }
-            });
-
-            // Collision dots
-            collisions.forEach(c => {
-                if (c[0] === step) {
-                    newImages.push({
-                        source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><circle cx='10' cy='10' r='10' fill='red'/></svg>",
-                        x: c[0],
-                        y: c[1],
-                        xref: "x",
-                        yref: "y",
-                        sizex: 1,
-                        sizey: 200,
-                        xanchor: "center",
-                        yanchor: "middle",
-                        layer: "above"
-                    });
-                }
-            });
-
-            // AI action dots
-            aiActions.forEach(a => {
-                if (a[0] === step) {
-                    newImages.push({
-                        source: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><circle cx='10' cy='10' r='10' fill='orange'/></svg>",
-                        x: a[0],
-                        y: a[4],
-                        xref: "x",
-                        yref: "y",
-                        sizex: 1,
-                        sizey: 300,
-                        xanchor: "center",
-                        yanchor: "middle",
-                        layer: "above"
-                    });
-                }
-            });
-
-            Plotly.relayout(containerId, { images: newImages, annotations: finalAnnotations });
+            // relayout with new set of images and annotations (annotations are static picks)
+            Plotly.relayout(containerId, { images: images, annotations: finalAnnotations });
 
             step++;
-            if (step >= maxSteps) clearInterval(interval);
-        }, 1000);
+            if (step >= maxSteps) {
+                clearInterval(interval);
+            }
+        }, intervalMs);
     }
 
+    // Initialize three animations depending on which histories are present
     {% if history_no_ai %}
     animateGraph("plot-no-ai", {{ history_no_ai|tojson }}, {{ collisions_no_ai|tojson }}, [], "Without AI - Live");
     {% endif %}
@@ -214,6 +262,7 @@
     {% endif %}
 
     {% if history_prevention %}
+    // Pass ai_actions as list of [time, trainId, old_speed, new_speed, pos_at_time]
     animateGraph("plot-ai-prevention", {{ history_prevention|tojson }}, [], {{ ai_actions|tojson }}, "AI Prevention - Live");
     {% endif %}
     </script>
