@@ -47,34 +47,40 @@
 
         {% if history_no_ai %}
         <h2>Results Without AI (Actual Collisions)</h2>
-        <div id="plot-no-ai" style="height:420px;"></div>
+        <div id="plot-no-ai" style="height:460px;"></div>
         {% endif %}
 
         {% if history_prediction %}
         <h2>Results With AI - Prediction (Before Action)</h2>
-        <div id="plot-ai-prediction" style="height:420px;"></div>
+        <div id="plot-ai-prediction" style="height:460px;"></div>
         {% endif %}
 
         {% if history_prevention %}
         <h2>Results With AI - After Action</h2>
-        <div id="plot-ai-prevention" style="height:420px;"></div>
+        <div id="plot-ai-prevention" style="height:460px;"></div>
         {% endif %}
     </div>
 
 <script>
-// small helper to produce inline SVG dot
+/* ---------- Helpers ---------- */
 function svgDot(color = "orange", size = 20) {
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'><circle cx='${size/2}' cy='${size/2}' r='${size/2}' fill='${color}'/></svg>`;
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
+/* ---------- animateGraph ----------
+history: { "1": [pos0,pos1,...], "2": [...] }
+collisions: [ [time, position], ... ]
+aiActions: [ [time, trainId, old_speed, new_speed, pos_at_time], ... ]
+*/
 function animateGraph(containerId, history, collisions=[], aiActions=[], title="") {
-    const trainIds = Object.keys(history).sort((a,b)=>Number(a)-Number(b));
+    // sort train ids numerically so order is stable
+    const trainIds = Object.keys(history).sort((a,b) => Number(a) - Number(b));
     if (trainIds.length === 0) return;
     const maxSteps = history[trainIds[0]].length;
 
-    // initial traces
-    const traces = trainIds.map(id => ({ x: [], y: [], mode: "lines", line: { width: 2 }, name: `Train ${id}` }));
+    // create empty traces (one per train)
+    const traces = trainIds.map(tid => ({ x: [], y: [], mode: "lines", line: { width: 2 }, name: `Train ${tid}` }));
 
     Plotly.newPlot(containerId, traces, {
         title: title,
@@ -86,78 +92,86 @@ function animateGraph(containerId, history, collisions=[], aiActions=[], title="
         annotations: []
     });
 
-    // group ai actions and sort
+    // group ai actions by train and sort by time
     const grouped = {};
     (aiActions || []).forEach(a => {
         const tid = String(a[1]);
         if (!grouped[tid]) grouped[tid] = [];
         grouped[tid].push(a);
     });
-    Object.keys(grouped).forEach(tid => grouped[tid].sort((x,y)=>x[0]-y[0]));
+    Object.keys(grouped).forEach(tid => grouped[tid].sort((x,y) => x[0] - y[0]));
 
-    // picks: first/mid/last per train
+    // picks: first, middle, last per train (these are the pick events)
     const picks = {};
     Object.keys(grouped).forEach(tid => {
-        const arr = grouped[tid];
-        if (!arr || arr.length === 0) return;
-        const sel = [arr[0]];
-        if (arr.length > 2) sel.push(arr[Math.floor(arr.length/2)]);
-        if (arr.length > 1) sel.push(arr[arr.length - 1]);
+        const acts = grouped[tid];
+        if (!acts || acts.length === 0) return;
+        const sel = [acts[0]];
+        if (acts.length > 2) sel.push(acts[Math.floor(acts.length/2)]);
+        if (acts.length > 1) sel.push(acts[acts.length - 1]);
         picks[tid] = sel;
     });
 
-    // pickShown controls when to actually show the pinned annotation (only show when train reaches pick time)
-    const pickShown = {}; // key = `${tid}_${pickTime}_${idx}` -> bool
+    // we'll keep cumulative annotations so already-shown annotations stay visible
+    const cumulativeAnnotations = [];
 
-    // prepare actionStarts (activate moving dot at action time)
+    // used to avoid re-adding same pick annotation
+    const pickShown = {};
+
+    // action start entries: activate moving orange dot at the action time
     const actionStarts = (aiActions || []).map((a, idx) => ({ id: idx, start: Number(a[0]), trainId: String(a[1]), info: a }));
 
-    const activeDots = []; // {id, trainId, info}
+    const activeDots = []; // active moving orange dots
     const collisionMap = {};
     (collisions || []).forEach(c => {
-        const t = Number(c[0]);
-        if (!collisionMap[t]) collisionMap[t] = [];
-        collisionMap[t].push(c[1]);
+        const time = Number(c[0]);
+        if (!collisionMap[time]) collisionMap[time] = [];
+        collisionMap[time].push(c[1]);
     });
 
-    // Larger vertical offsets (so trains don't hide each other). Alternating up/down and increasing spacing.
+    // bigger vertical offsets to reduce overlap (tweak magnitude if needed)
     const yOffsets = {};
     trainIds.forEach((tid, idx) => {
         const sign = (idx % 2 === 0) ? 1 : -1;
-        const magnitude = 2.0 * Math.floor(idx/2); // 2 meter steps (increase if needed)
+        const magnitude = 3.0 * Math.floor(idx / 2); // 3 meters per step
         yOffsets[tid] = sign * magnitude;
     });
 
-    // horizontal micro-stagger so icons don't sit exact same x when close
+    // tiny horizontal x-stagger so icons do not perfectly overlap on the same step
     const xStagger = {};
     trainIds.forEach((tid, idx) => {
-        xStagger[tid] = (idx % 3) * 0.05; // very small shift in x coordinate (time units)
+        xStagger[tid] = (idx % 4) * 0.02; // very small shift in time units
     });
 
+    // animation loop
     let step = 0;
-    const intervalMs = 600;
+    const intervalMs = 500; // animation speed
 
     const interval = setInterval(() => {
-        // extend traces
-        const updateX = trainIds.map(tid => [step + (xStagger[tid] || 0)]);
-        const updateY = trainIds.map(tid => {
-            const val = history[tid][step];
-            return [ val + (yOffsets[tid] || 0) ];
+        // extend traces with this step's points
+        const updatesX = trainIds.map(tid => [step + (xStagger[tid] || 0)]);
+        const updatesY = trainIds.map(tid => {
+            const raw = history[tid][step];
+            return [ raw + (yOffsets[tid] || 0) ];
         });
-        Plotly.extendTraces(containerId, { x: updateX, y: updateY }, trainIds.map((_,i)=>i));
+        Plotly.extendTraces(containerId, { x: updatesX, y: updatesY }, trainIds.map((_,i) => i));
 
-        // activate dots at their start times
+        // activate AI dots that start at this step
         actionStarts.forEach(ev => {
             if (ev.start === step) {
-                if (!activeDots.some(d => d.id === ev.id)) activeDots.push({ id: ev.id, trainId: ev.trainId, info: ev.info });
+                if (!activeDots.some(d => d.id === ev.id)) {
+                    activeDots.push({ id: ev.id, trainId: ev.trainId, info: ev.info });
+                }
             }
         });
 
-        // build images (train icons, AI dots, collision icons)
+        // assemble images: train PNGs, collisions at this step, active AI dots
         const images = [];
 
-        // train icons — made bigger (sizey increased)
+        // train PNG icons (LARGER now)
         trainIds.forEach(tid => {
+            // safety: if history doesn't have step (unlikely), skip
+            if (!history[tid] || step >= history[tid].length) return;
             const pos = history[tid][step];
             images.push({
                 source: "/static/train.png",
@@ -165,15 +179,16 @@ function animateGraph(containerId, history, collisions=[], aiActions=[], title="
                 y: pos + (yOffsets[tid] || 0),
                 xref: "x",
                 yref: "y",
-                sizex: 1.8,     // wider
-                sizey: 160,     // taller -> makes png bigger
+                // sizex is in x-axis units (time steps). sizey in y-axis units (position). Tweak these for visual size
+                sizex: 2.0,
+                sizey: 220,
                 xanchor: "center",
                 yanchor: "middle",
                 layer: "above"
             });
         });
 
-        // collisions that occur at this time
+        // collisions at this time
         if (collisionMap[step]) {
             collisionMap[step].forEach(pos => {
                 images.push({
@@ -191,7 +206,7 @@ function animateGraph(containerId, history, collisions=[], aiActions=[], title="
             });
         }
 
-        // active AI dots travel with train
+        // active orange dots travel with train
         activeDots.forEach(dot => {
             const tid = dot.trainId;
             if (!history[tid]) return;
@@ -211,28 +226,28 @@ function animateGraph(containerId, history, collisions=[], aiActions=[], title="
             });
         });
 
-        // annotations: show pinned pick annotations (first/mid/last) but only once train reached the pick time
-        const annotations = [];
+        // when the sim reaches the time of a pick, add a pinned annotation at the pick time+position.
+        // Keep cumulativeAnnotations so they remain visible once added.
         Object.keys(picks).forEach(tid => {
             picks[tid].forEach((a, idx) => {
                 const pickTime = Number(a[0]);
-                const pickPos = a[4];
+                // only proceed if sim time >= pickTime and not yet shown
                 const key = `${tid}_${pickTime}_${idx}`;
-                // show annotation only when simulation time >= pick time and not shown before
                 if (step >= pickTime && !pickShown[key]) {
-                    // compute arrow offset to reduce overlapping with other annotations
-                    const ay = -40 - (Number(tid) * 6) - (idx * 16);
-                    const reduction = Math.abs((a[2] - a[3]) * 3.6).toFixed(1);
-                    annotations.push({
+                    // prefer actual history position at pickTime if available
+                    const posAtPick = (history[tid] && history[tid].length > pickTime) ? history[tid][pickTime] : a[4];
+                    const displayY = posAtPick + (yOffsets[tid] || 0);
+                    const reduction = Math.abs((a[2] - a[3]) * 3.6).toFixed(1); // km/h
+                    cumulativeAnnotations.push({
                         x: pickTime,
-                        y: pickPos + (yOffsets[tid] || 0),
-                        xref: 'x',
-                        yref: 'y',
+                        y: displayY,
+                        xref: "x",
+                        yref: "y",
                         text: `Train-${tid} ↓${reduction} km/h`,
                         showarrow: true,
                         arrowhead: 3,
                         ax: 0,
-                        ay: ay,
+                        ay: -40 - (Number(tid) * 6) - (idx * 14),
                         font: { size: 12, color: "black" },
                         bgcolor: "rgba(255,255,255,0.95)",
                         bordercolor: "gray",
@@ -243,7 +258,8 @@ function animateGraph(containerId, history, collisions=[], aiActions=[], title="
             });
         });
 
-        Plotly.relayout(containerId, { images: images, annotations: annotations });
+        // update plot images and annotations (cumulativeAnnotations keeps previously shown picks)
+        Plotly.relayout(containerId, { images: images, annotations: cumulativeAnnotations });
 
         step++;
         if (step >= maxSteps) {
@@ -252,7 +268,7 @@ function animateGraph(containerId, history, collisions=[], aiActions=[], title="
     }, intervalMs);
 }
 
-/* Initialize graphs (Flask variables injected) */
+/* ---------- Initialize (execute for whichever histories exist) ---------- */
 
 {% if history_no_ai %}
 animateGraph("plot-no-ai", {{ history_no_ai|tojson }}, {{ collisions_no_ai|tojson }}, [], "Without AI - Live");
