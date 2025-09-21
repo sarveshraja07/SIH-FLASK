@@ -6,9 +6,11 @@ from simulation_core import (
     simulate_ai_prevention,
     Train
 )
+import os
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # Needed for session handling
+# Use environment variable for secret key if available, otherwise fallback
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")  
 
 # 🔹 Global variable to store last simulation's AI actions
 global_ai_actions = []
@@ -34,12 +36,11 @@ def info():
     return render_template("info.html", ai_actions=global_ai_actions)
 
 
-
 @app.route("/simulation", methods=["GET", "POST"])
 def simulation():
     global global_ai_actions
 
-    #  Restrict access if not logged in
+    # Restrict access if not logged in
     if "user" not in session:
         return redirect(url_for("login"))
 
@@ -106,4 +107,6 @@ def logout():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Use Render's port or default 5000
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
