@@ -15,8 +15,8 @@ app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 global_ai_actions = []
 
 # 🔹 Hardcoded credentials
-VALID_EMAIL = "sarveshraja2007@gmail.com"
-VALID_PASSWORD = "sarvesh@07"
+VALID_EMAIL = "hackaholics5@gmail.com"
+VALID_PASSWORD = "hackaholics"
 
 
 @app.route("/")
